@@ -104,11 +104,12 @@ def _seed_skills(workspace: Path, templates_dir: Path) -> None:
 
 
 def _ensure_claude_md(workspace: Path) -> None:
-    """Create CLAUDE.md with inlined soul file contents if it doesn't exist."""
-    claude_md = workspace / "CLAUDE.md"
-    if claude_md.exists():
-        return
+    """Regenerate CLAUDE.md with the current soul file contents.
 
+    Always regenerates so that edits made in the previous session are
+    picked up automatically at the next session start.
+    """
+    claude_md = workspace / "CLAUDE.md"
     claude_md.write_text(generate_claude_md(workspace))
 
 

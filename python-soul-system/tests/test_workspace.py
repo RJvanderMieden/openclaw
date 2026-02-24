@@ -64,14 +64,22 @@ class TestEnsureWorkspace:
 
         assert (workspace / "SOUL.md").read_text() == "Custom soul content"
 
-    def test_does_not_overwrite_existing_claude_md(self, tmp_path: Path):
+    def test_regenerates_claude_md_on_each_ensure(self, tmp_path: Path):
         workspace = tmp_path / "ws"
         workspace.mkdir()
-        (workspace / "CLAUDE.md").write_text("# My custom CLAUDE.md")
-
+        (workspace / "SOUL.md").write_text("Original soul")
         ensure_workspace(workspace)
 
-        assert (workspace / "CLAUDE.md").read_text() == "# My custom CLAUDE.md"
+        content_v1 = (workspace / "CLAUDE.md").read_text()
+        assert "Original soul" in content_v1
+
+        # Simulate an agent editing SOUL.md during a session
+        (workspace / "SOUL.md").write_text("Updated soul")
+        ensure_workspace(workspace)
+
+        content_v2 = (workspace / "CLAUDE.md").read_text()
+        assert "Updated soul" in content_v2
+        assert "Original soul" not in content_v2
 
     def test_creates_claude_skills_directory(self, tmp_path: Path):
         workspace = ensure_workspace(tmp_path / "ws")

@@ -25,8 +25,9 @@ All files live at the workspace root (same directory as CLAUDE.md):
 | `HEARTBEAT.md`  | Periodic background tasks                       | When adding/removing recurring checks      |
 | `BOOTSTRAP.md`  | First-run onboarding script                     | Delete it after onboarding is complete     |
 
-These files are loaded into your system prompt via `CLAUDE.md` (which
-`@import`s them). Changes take effect next session.
+These files are inlined into `CLAUDE.md` (which is regenerated at each
+session start). Edit the source files directly — changes take effect next
+session.
 
 ## How to read them
 
@@ -76,5 +77,5 @@ Important things should also go into `MEMORY.md` (long-term).
 
 - **Tell the user** when you change `SOUL.md` — it's your soul, they should know.
 - **Don't delete** soul files (except `BOOTSTRAP.md` after onboarding).
-- Changes take effect **next session** (current session uses the prompt as loaded).
+- Changes take effect **next session** — `CLAUDE.md` is regenerated at session start with the latest file contents.
 - Keep files concise. These go into your system prompt — bloat costs tokens.
