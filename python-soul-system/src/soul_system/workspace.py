@@ -58,6 +58,7 @@ def ensure_workspace(
         templates_dir = get_templates_dir()
         if templates_dir.is_dir():
             _seed_missing_files(workspace, templates_dir)
+            _seed_skills(workspace, templates_dir)
         _ensure_claude_md(workspace)
 
     # Ensure directories exist
@@ -77,6 +78,24 @@ def _seed_missing_files(workspace: Path, templates_dir: Path) -> None:
         template = templates_dir / name
         if template.is_file():
             shutil.copy2(template, target)
+
+
+def _seed_skills(workspace: Path, templates_dir: Path) -> None:
+    """Copy bundled skill templates into .claude/skills/ if not already present."""
+    src_skills = templates_dir / ".claude" / "skills"
+    if not src_skills.is_dir():
+        return
+
+    dst_skills = workspace / ".claude" / "skills"
+    dst_skills.mkdir(parents=True, exist_ok=True)
+
+    for skill_dir in sorted(src_skills.iterdir()):
+        if not skill_dir.is_dir():
+            continue
+        dst_skill = dst_skills / skill_dir.name
+        if dst_skill.exists():
+            continue
+        shutil.copytree(skill_dir, dst_skill)
 
 
 def _ensure_claude_md(workspace: Path) -> None:

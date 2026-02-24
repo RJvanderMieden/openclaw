@@ -72,6 +72,23 @@ class TestEnsureWorkspace:
         workspace = ensure_workspace(tmp_path / "ws")
         assert (workspace / "memory").is_dir()
 
+    def test_seeds_bundled_skills(self, tmp_path: Path):
+        workspace = ensure_workspace(tmp_path / "ws")
+        skill = workspace / ".claude" / "skills" / "soul-editor" / "SKILL.md"
+
+        assert skill.exists()
+        assert "soul files" in skill.read_text().lower()
+
+    def test_does_not_overwrite_existing_skills(self, tmp_path: Path):
+        workspace = tmp_path / "ws"
+        skill_dir = workspace / ".claude" / "skills" / "soul-editor"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("Custom skill")
+
+        ensure_workspace(workspace)
+
+        assert (skill_dir / "SKILL.md").read_text() == "Custom skill"
+
     def test_skip_templates(self, tmp_path: Path):
         workspace = ensure_workspace(tmp_path / "ws", seed_templates=False)
         assert workspace.exists()
