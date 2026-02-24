@@ -1,6 +1,6 @@
 ---
 name: soul-search
-description: Search and analyze workspace bootstrap files (SOUL.md, AGENTS.md, TOOLS.md, etc.) and skills. Use when you need to understand the workspace configuration, find specific rules, check what instructions are active, or debug system prompt assembly.
+description: Search and analyze workspace soul files (SOUL.md, IDENTITY.md, USER.md, etc.) and skills. Use when you need to understand the workspace configuration, find specific rules, or check what instructions are active.
 allowed-tools: Read, Grep, Glob
 ---
 
@@ -8,72 +8,49 @@ allowed-tools: Read, Grep, Glob
 
 You are a specialist in the SOUL.md workspace system.
 
-## Workspace bootstrap files
+## How it works
 
-The workspace contains named files that define the agent's behavior. These files
-are loaded at session start and assembled into the system prompt:
+The workspace has a CLAUDE.md that `@import`s soul files. The SDK loads
+everything via `setting_sources=["project"]`. Soul files live at the
+workspace root; skills live in `.claude/skills/`.
+
+## Soul files
 
 | File          | Purpose                                           |
 |---------------|---------------------------------------------------|
-| AGENTS.md     | Session guidelines, memory rules, safety          |
 | SOUL.md       | Agent personality, core identity, boundaries      |
 | IDENTITY.md   | Name, creature type, vibe, emoji                  |
 | USER.md       | Human profile (name, timezone, context)           |
 | TOOLS.md      | Local tool notes (cameras, SSH, TTS voices, etc.) |
-| HEARTBEAT.md  | Periodic check tasks                              |
-| BOOTSTRAP.md  | First-run onboarding (deleted after setup)        |
+| AGENTS.md     | Session guidelines, memory rules, safety          |
 | MEMORY.md     | Long-term curated memory                          |
+| BOOTSTRAP.md  | First-run onboarding (deleted after setup)        |
+| HEARTBEAT.md  | Periodic check tasks                              |
 
 ## Skills
 
-Skills live in `skills/*/SKILL.md`. Each SKILL.md has:
-- YAML frontmatter: `name`, `description`, `allowed-tools`, `user-invocable`, `disable-model-invocation`
-- Markdown content with instructions for the agent
-- Optional supporting files (scripts, templates, examples)
+Skills live in `.claude/skills/*/SKILL.md` (SDK-native location).
 
 ## How to search
 
-1. **Find all workspace files:**
+1. **Find all soul files:**
    ```
    Glob pattern="*.md" path="<workspace-dir>"
    ```
 
 2. **Find all skills:**
    ```
-   Glob pattern="skills/*/SKILL.md" path="<workspace-dir>"
+   Glob pattern=".claude/skills/*/SKILL.md" path="<workspace-dir>"
    ```
 
 3. **Search for specific instructions:**
    ```
    Grep pattern="your search term" glob="*.md" path="<workspace-dir>"
-   Grep pattern="your search term" glob="skills/*/SKILL.md" path="<workspace-dir>"
-   ```
-
-4. **Check what the agent's personality is:**
-   ```
-   Read file_path="<workspace-dir>/SOUL.md"
    ```
 
 ## What to report
 
-When analyzing the workspace, always report:
-- **Which bootstrap files exist** and which are missing
-- **Key instructions** from each file (identity, rules, boundaries)
-- **Available skills** with their descriptions
-- **Memory state** (daily notes, long-term memory entries)
-- **Onboarding status** (BOOTSTRAP.md present = not yet onboarded)
-
-## Python API
-
-```python
-from soul_system import SoulAssembler
-
-assembler = SoulAssembler(workspace_dir="~/.my-agent/workspace")
-assembler.load()
-
-# Inspect loaded files
-print(assembler.get_file_summary())
-
-# Get the assembled system prompt
-prompt = assembler.assemble()
-```
+- Which soul files exist and which are missing
+- Key instructions from each file (identity, rules, boundaries)
+- Available skills with descriptions
+- Onboarding status (BOOTSTRAP.md present = not yet onboarded)

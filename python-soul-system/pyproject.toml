@@ -1,19 +1,18 @@
 [project]
 name = "soul-system"
-version = "0.1.0"
-description = "SOUL.md system prompt assembler for Claude Agent SDK"
+version = "0.2.0"
+description = "SOUL.md workspace system for the Claude Agent SDK — soul files loaded natively via CLAUDE.md @import"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-dependencies = [
-    "claude-agent-sdk>=0.1.30",
-    "pyyaml>=6.0",
-]
+dependencies = []
 
 [project.optional-dependencies]
+sdk = [
+    "claude-agent-sdk>=0.1.30",
+]
 dev = [
     "pytest>=8.0",
-    "pytest-asyncio>=0.24",
 ]
 
 [build-system]
@@ -24,5 +23,4 @@ build-backend = "hatchling.build"
 packages = ["src/soul_system"]
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
 testpaths = ["tests"]

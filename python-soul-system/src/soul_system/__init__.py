@@ -1,63 +1,30 @@
-"""SOUL.md workspace system prompt assembler for the Claude Agent SDK.
+"""SOUL.md workspace system for the Claude Agent SDK.
 
-This package assembles agent personality, identity, and memory from a set of
-named workspace files (SOUL.md, AGENTS.md, IDENTITY.md, USER.md, TOOLS.md, etc.)
-into a system prompt that can be passed to the Claude Agent SDK.
+Creates a workspace with soul files (SOUL.md, IDENTITY.md, USER.md, etc.)
+and a CLAUDE.md that ``@import``s them. The SDK loads everything automatically
+via ``setting_sources=["project"]``.
 
-How this relates to the SDK's built-in features
-------------------------------------------------
-
-The Claude Agent SDK already handles CLAUDE.md and .claude/skills/ loading
-when you set ``setting_sources=["project"]``. That covers **project coding
-instructions** and **Claude Code skills**.
-
-This package handles a different layer: **agent personality and memory** via
-the SOUL.md workspace concept (inspired by OpenClaw). The two are complementary:
-
-- CLAUDE.md (SDK-managed): Project coding conventions, tool configs, rules
-- SOUL.md workspace (this package): Agent identity, personality, user profile,
-  memory, tools, session guidelines
+No custom assembler needed — the SDK handles file loading, skills, and
+system prompt assembly natively.
 
 Usage::
 
-    from soul_system import SoulAssembler
+    from soul_system.workspace import ensure_workspace
+    from soul_system.agent import create_soul_options, soul_query
 
-    # Assemble workspace into a system prompt
-    assembler = SoulAssembler(workspace_dir="~/.my-agent/workspace")
-    system_prompt = assembler.assemble()
+    # 1. Create a workspace with soul templates
+    workspace = ensure_workspace("~/.my-agent/workspace")
 
-    # Use with Claude Agent SDK
-    from claude_agent_sdk import query, ClaudeAgentOptions
-    async for msg in query(
-        prompt="Hello",
-        options=ClaudeAgentOptions(
-            system_prompt=system_prompt,
-            # Also load CLAUDE.md and .claude/skills/ from the project:
-            setting_sources=["project"],
-        ),
-    ):
+    # 2. Use with the Claude Agent SDK
+    options = create_soul_options(workspace_dir=workspace)
+
+    from claude_agent_sdk import query
+    async for msg in query(prompt="Hello", options=options):
         print(msg)
-
-    # Or use the convenience helper:
-    from soul_system.agent import create_soul_options
-    options = create_soul_options(
-        workspace_dir="~/.my-agent/workspace",
-        setting_sources=["project"],  # also load CLAUDE.md
-    )
 """
 
-from soul_system.assembler import SoulAssembler
-from soul_system.types import (
-    BootstrapContext,
-    BootstrapFile,
-    SkillEntry,
-    WorkspaceConfig,
-)
+from soul_system.types import WorkspaceConfig
 
 __all__ = [
-    "SoulAssembler",
-    "BootstrapFile",
-    "BootstrapContext",
-    "SkillEntry",
     "WorkspaceConfig",
 ]
