@@ -6,6 +6,10 @@ This example shows how to:
 3. Discover skills
 4. Assemble the full system prompt
 5. Use the assembled prompt with the Claude Agent SDK
+6. Combine with setting_sources to also load CLAUDE.md
+
+The SOUL.md workspace is *complementary* to the SDK's built-in
+``setting_sources`` which handles CLAUDE.md and ``.claude/skills/``.
 """
 
 import asyncio
@@ -65,26 +69,45 @@ def example_init_workspace() -> None:
 
 
 def example_sdk_options() -> None:
-    """Show how to create SDK options with workspace prompt."""
-    # Plain custom system prompt
+    """Show how to create SDK options with workspace prompt.
+
+    Demonstrates the two complementary layers:
+    - SOUL.md workspace: Agent personality, identity, memory (this package)
+    - CLAUDE.md / .claude/skills/: Project coding instructions (SDK built-in)
+    """
+    # Mode 1: Custom system prompt (workspace only)
     options = create_soul_options(
         workspace_dir=EXAMPLE_WORKSPACE,
         allowed_tools=["Read", "Grep", "Glob"],
     )
-    prompt = options.system_prompt
-    print("=== SDK Options (custom prompt) ===")
-    print(f"System prompt type: {type(prompt).__name__}")
+    prompt = options.system_prompt if hasattr(options, "system_prompt") else options["system_prompt"]
+    print("=== SDK Options (workspace only) ===")
     print(f"System prompt length: {len(prompt)} chars")
     print()
 
-    # Preset mode (extends Claude Code's built-in prompt)
+    # Mode 2: Workspace + CLAUDE.md loading via setting_sources
+    # setting_sources=["project"] tells the SDK to also load CLAUDE.md
+    # and .claude/skills/ from the project directory.
+    options_with_sources = create_soul_options(
+        workspace_dir=EXAMPLE_WORKSPACE,
+        setting_sources=["project"],
+        allowed_tools=["Read", "Grep", "Glob"],
+    )
+    print("=== SDK Options (workspace + setting_sources) ===")
+    ss = options_with_sources.setting_sources if hasattr(options_with_sources, "setting_sources") else options_with_sources.get("setting_sources")
+    print(f"setting_sources: {ss}")
+    print("(SDK will also load CLAUDE.md and .claude/skills/ from disk)")
+    print()
+
+    # Mode 3: Preset mode (extends Claude Code's built-in prompt)
     options_preset = create_soul_options(
         workspace_dir=EXAMPLE_WORKSPACE,
         use_preset=True,
         extra_instructions="Focus on Python best practices.",
+        setting_sources=["project"],
     )
     print("=== SDK Options (preset mode) ===")
-    preset = options_preset.system_prompt
+    preset = options_preset.system_prompt if hasattr(options_preset, "system_prompt") else options_preset["system_prompt"]
     print(f"System prompt type: {type(preset).__name__}")
     if isinstance(preset, dict):
         print(f"Preset: {preset.get('preset')}")
@@ -95,13 +118,15 @@ def example_sdk_options() -> None:
 async def example_query() -> None:
     """Run a query using the workspace-assembled system prompt.
 
-    NOTE: Requires ANTHROPIC_API_KEY to be set.
+    NOTE: Requires ANTHROPIC_API_KEY to be set and claude-agent-sdk installed.
     """
     async for message in soul_query(
         prompt="Who are you? What do you know about the user you're helping?",
         workspace_dir=EXAMPLE_WORKSPACE,
         allowed_tools=["Read", "Grep", "Glob"],
         permission_mode="acceptEdits",
+        # Also load CLAUDE.md if present in the project:
+        setting_sources=["project"],
     ):
         if hasattr(message, "content"):
             for block in message.content:

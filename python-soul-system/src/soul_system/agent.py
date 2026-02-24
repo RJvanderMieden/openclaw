@@ -1,7 +1,35 @@
 """Claude Agent SDK integration for the SOUL.md workspace system.
 
-Provides helper functions to create SDK options with workspace-assembled
-system prompts, and programmatic subagent definitions.
+How this relates to the SDK's built-in setting_sources
+------------------------------------------------------
+
+The Claude Agent SDK has a ``setting_sources`` parameter that controls what
+it loads from the filesystem automatically:
+
+- ``setting_sources=None`` (default): SDK loads NOTHING from disk.
+- ``setting_sources=["project"]``: SDK auto-loads CLAUDE.md files and
+  ``.claude/settings.json`` (including ``.claude/skills/``).
+- ``setting_sources=["user", "project", "local"]``: Full Claude Code experience.
+
+That system handles **project coding instructions** (CLAUDE.md) and **Claude
+Code skills** (``.claude/skills/``). It does NOT know about the SOUL.md
+workspace concept — agent personality, identity, memory, user profile, etc.
+
+This module bridges the two:
+
+1. **Custom prompt mode** (``use_preset=False``, default):
+   Assembles the SOUL.md workspace into a standalone system prompt.
+   Use when your agent's entire personality comes from the workspace.
+   Combine with ``setting_sources=["project"]`` so the SDK also picks up
+   CLAUDE.md and ``.claude/skills/`` on top.
+
+2. **Preset mode** (``use_preset=True``):
+   Appends the SOUL.md workspace content to Claude Code's built-in system
+   prompt via ``{"type": "preset", "preset": "claude_code", "append": ...}``.
+   Use when you want Claude Code's full behavior plus workspace personality.
+
+In both modes, ``setting_sources`` is orthogonal — it controls whether the SDK
+also loads CLAUDE.md/skills from disk, independent of the SOUL.md workspace.
 """
 
 from __future__ import annotations
@@ -9,14 +37,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-from claude_agent_sdk import (
-    ClaudeAgentOptions,
-    ClaudeSDKClient,
-    query,
-)
-from claude_agent_sdk.types import AgentDefinition
-
 from soul_system.assembler import SoulAssembler
+
+# SDK imports are deferred so tests can run without the SDK installed.
+try:
+    from claude_agent_sdk import (
+        ClaudeAgentOptions,
+        query as sdk_query,
+    )
+    from claude_agent_sdk.types import AgentDefinition
+
+    SDK_AVAILABLE = True
+except ImportError:
+    SDK_AVAILABLE = False
 
 
 def create_soul_options(
@@ -28,21 +61,32 @@ def create_soul_options(
     use_preset: bool = False,
     extra_instructions: str | None = None,
     model: str | None = None,
+    setting_sources: list[str] | None = None,
     include_soul_agents: bool = False,
     **kwargs: Any,
-) -> ClaudeAgentOptions:
+) -> Any:
     """Create ClaudeAgentOptions with a workspace-assembled system prompt.
+
+    The SOUL.md workspace (AGENTS.md, IDENTITY.md, USER.md, etc.) is assembled
+    into the system prompt. This is *complementary* to the SDK's own
+    ``setting_sources`` which handles CLAUDE.md and ``.claude/skills/``.
 
     Args:
         workspace_dir: Path to the workspace directory containing SOUL.md etc.
-        skills_dirs: Extra directories to scan for skills.
+        skills_dirs: Extra directories to scan for workspace skills.
         allowed_tools: Tools the agent can use.
         permission_mode: Permission mode for the agent.
-        use_preset: If True, append workspace content to Claude Code's preset prompt.
+        use_preset: If True, append workspace content to Claude Code's preset.
         extra_instructions: Additional instructions to append.
         model: Model to use.
-        include_soul_agents: Include the soul-searcher subagent definition.
+        setting_sources: SDK setting sources. Use ``["project"]`` to also load
+            CLAUDE.md and ``.claude/skills/`` from the project. Default ``None``
+            (SDK loads nothing from disk; only the workspace prompt is used).
+        include_soul_agents: Include a soul-searcher subagent definition.
         **kwargs: Additional ClaudeAgentOptions fields.
+
+    Returns:
+        ClaudeAgentOptions if the SDK is installed, otherwise a plain dict.
     """
     assembler = SoulAssembler(
         workspace_dir=workspace_dir,
@@ -58,24 +102,38 @@ def create_soul_options(
         if extra_instructions:
             system_prompt += f"\n\n{extra_instructions}"
 
-    agents = kwargs.pop("agents", None) or {}
+    agents: dict[str, Any] | None = kwargs.pop("agents", None)
     if include_soul_agents:
+        agents = agents or {}
         agents.update(create_soul_search_agent())
 
-    return ClaudeAgentOptions(
-        system_prompt=system_prompt,
-        allowed_tools=allowed_tools
+    opts: dict[str, Any] = {
+        "system_prompt": system_prompt,
+        "allowed_tools": allowed_tools
         or ["Read", "Write", "Edit", "Bash", "Grep", "Glob"],
-        permission_mode=permission_mode,
-        cwd=str(Path(workspace_dir).expanduser().resolve()),
-        model=model,
-        agents=agents if agents else None,
-        **kwargs,
-    )
+        "permission_mode": permission_mode,
+        "cwd": str(Path(workspace_dir).expanduser().resolve()),
+    }
+
+    if model is not None:
+        opts["model"] = model
+
+    if setting_sources is not None:
+        opts["setting_sources"] = setting_sources
+
+    if agents:
+        opts["agents"] = agents
+
+    opts.update(kwargs)
+
+    if SDK_AVAILABLE:
+        return ClaudeAgentOptions(**opts)
+
+    return opts
 
 
-def create_soul_search_agent() -> dict[str, AgentDefinition]:
-    """Create a subagent that can search through SOUL.md and workspace files.
+def create_soul_search_agent() -> dict[str, Any]:
+    """Create a subagent definition for searching workspace SOUL.md files.
 
     This agent is for the AI itself to use when it needs to understand the
     workspace configuration, find specific rules in SOUL.md, or check what
@@ -83,16 +141,27 @@ def create_soul_search_agent() -> dict[str, AgentDefinition]:
 
     Returns a dict suitable for ClaudeAgentOptions.agents.
     """
-    return {
-        "soul-searcher": AgentDefinition(
-            description=(
-                "Search and analyze workspace SOUL.md files and skills. "
-                "Use proactively when you need to understand the workspace "
-                "configuration, find specific rules, check what instructions "
-                "are defined in SOUL.md/AGENTS.md/TOOLS.md, or discover "
-                "available skills."
-            ),
-            prompt="""You are a workspace configuration analyst. Your job is to search
+    definition: dict[str, Any] = {
+        "description": (
+            "Search and analyze workspace SOUL.md files and skills. "
+            "Use proactively when you need to understand the workspace "
+            "configuration, find specific rules, check what instructions "
+            "are defined in SOUL.md/AGENTS.md/TOOLS.md, or discover "
+            "available skills."
+        ),
+        "prompt": _SOUL_SEARCH_PROMPT,
+        "tools": ["Read", "Grep", "Glob"],
+        "model": "haiku",
+    }
+
+    if SDK_AVAILABLE:
+        return {"soul-searcher": AgentDefinition(**definition)}
+
+    return {"soul-searcher": definition}
+
+
+_SOUL_SEARCH_PROMPT = """\
+You are a workspace configuration analyst. Your job is to search
 and analyze the workspace bootstrap files and skills.
 
 ## Workspace bootstrap files
@@ -128,11 +197,7 @@ Always report:
 - Key rules and instructions from each file
 - Available skills with their descriptions
 - Any notable configuration or customizations
-""",
-            tools=["Read", "Grep", "Glob"],
-            model="haiku",
-        )
-    }
+"""
 
 
 async def soul_query(
@@ -142,26 +207,19 @@ async def soul_query(
 ) -> AsyncIterator[Any]:
     """Run a query with workspace-assembled system prompt.
 
-    Convenience wrapper around claude_agent_sdk.query().
+    Convenience wrapper around ``claude_agent_sdk.query()``.
+
+    Args:
+        prompt: The user message to send.
+        workspace_dir: Path to the SOUL.md workspace.
+        **kwargs: Passed to create_soul_options().
     """
+    if not SDK_AVAILABLE:
+        raise RuntimeError(
+            "claude-agent-sdk is not installed. "
+            "Install it with: pip install claude-agent-sdk"
+        )
+
     options = create_soul_options(workspace_dir=workspace_dir, **kwargs)
-    async for message in query(prompt=prompt, options=options):
+    async for message in sdk_query(prompt=prompt, options=options):
         yield message
-
-
-async def soul_client(
-    workspace_dir: str | Path,
-    *,
-    include_soul_agents: bool = True,
-    **kwargs: Any,
-) -> ClaudeSDKClient:
-    """Create a ClaudeSDKClient with workspace-assembled system prompt.
-
-    Returns a client ready for multi-turn conversation.
-    """
-    options = create_soul_options(
-        workspace_dir=workspace_dir,
-        include_soul_agents=include_soul_agents,
-        **kwargs,
-    )
-    return ClaudeSDKClient(options=options)
