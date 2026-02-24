@@ -29,22 +29,31 @@ class TestEnsureWorkspace:
         assert (workspace / "USER.md").exists()
         assert (workspace / "TOOLS.md").exists()
 
-    def test_creates_claude_md(self, tmp_path: Path):
+    def test_creates_claude_md_with_inlined_content(self, tmp_path: Path):
         workspace = ensure_workspace(tmp_path / "ws")
 
         claude_md = workspace / "CLAUDE.md"
         assert claude_md.exists()
 
         content = claude_md.read_text()
-        assert "@import SOUL.md" in content
-        assert "@import IDENTITY.md" in content
-        assert "@import USER.md" in content
+        # File contents are inlined under ## headers
+        assert "## SOUL.md" in content
+        assert "## IDENTITY.md" in content
+        assert "## USER.md" in content
+        # Preamble declares files as user-editable
+        assert "user-editable" in content
 
-    def test_claude_md_includes_bootstrap_when_present(self, tmp_path: Path):
+    def test_claude_md_inlines_bootstrap_when_present(self, tmp_path: Path):
         workspace = ensure_workspace(tmp_path / "ws")
         content = (workspace / "CLAUDE.md").read_text()
 
-        assert "@import BOOTSTRAP.md" in content
+        assert "## BOOTSTRAP.md" in content
+
+    def test_claude_md_has_soul_persona_instruction(self, tmp_path: Path):
+        workspace = ensure_workspace(tmp_path / "ws")
+        content = (workspace / "CLAUDE.md").read_text()
+
+        assert "embody its persona" in content
 
     def test_does_not_overwrite_existing_files(self, tmp_path: Path):
         workspace = tmp_path / "ws"
@@ -97,62 +106,92 @@ class TestEnsureWorkspace:
 
 
 class TestGenerateClaudeMd:
-    def test_includes_existing_files(self, tmp_path: Path):
-        (tmp_path / "SOUL.md").write_text("soul")
-        (tmp_path / "IDENTITY.md").write_text("identity")
+    def test_inlines_file_content(self, tmp_path: Path):
+        (tmp_path / "SOUL.md").write_text("Be helpful and kind.")
+        (tmp_path / "IDENTITY.md").write_text("Name: Nova")
 
         content = generate_claude_md(tmp_path)
 
-        assert "@import SOUL.md" in content
-        assert "@import IDENTITY.md" in content
+        assert "## SOUL.md" in content
+        assert "Be helpful and kind." in content
+        assert "## IDENTITY.md" in content
+        assert "Name: Nova" in content
 
     def test_excludes_missing_files(self, tmp_path: Path):
-        (tmp_path / "SOUL.md").write_text("soul")
+        (tmp_path / "SOUL.md").write_text("soul content")
 
         content = generate_claude_md(tmp_path)
 
-        assert "@import SOUL.md" in content
-        assert "@import IDENTITY.md" not in content
+        assert "## SOUL.md" in content
+        assert "## IDENTITY.md" not in content
 
     def test_includes_bootstrap_when_present(self, tmp_path: Path):
-        (tmp_path / "BOOTSTRAP.md").write_text("onboarding")
+        (tmp_path / "BOOTSTRAP.md").write_text("onboarding steps")
 
         content = generate_claude_md(tmp_path)
-        assert "@import BOOTSTRAP.md" in content
+
+        assert "## BOOTSTRAP.md" in content
+        assert "onboarding steps" in content
 
     def test_excludes_bootstrap_when_absent(self, tmp_path: Path):
         content = generate_claude_md(tmp_path)
         assert "BOOTSTRAP.md" not in content
 
-    def test_empty_workspace_has_no_import_directives(self, tmp_path: Path):
+    def test_empty_workspace_has_no_project_context(self, tmp_path: Path):
         content = generate_claude_md(tmp_path)
-        # No @import <file> lines (header comment mentioning @imports is fine)
-        lines = content.splitlines()
-        import_lines = [l for l in lines if l.startswith("@import ")]
-        assert len(import_lines) == 0
+        assert "# Project Context" not in content
+
+    def test_has_user_editable_preamble(self, tmp_path: Path):
+        (tmp_path / "SOUL.md").write_text("soul")
+
+        content = generate_claude_md(tmp_path)
+        assert "user-editable" in content
+
+    def test_has_soul_persona_instruction(self, tmp_path: Path):
+        (tmp_path / "SOUL.md").write_text("Be bold.")
+
+        content = generate_claude_md(tmp_path)
+        assert "embody its persona" in content
+
+    def test_no_soul_instruction_without_soul_file(self, tmp_path: Path):
+        (tmp_path / "USER.md").write_text("Name: Alex")
+
+        content = generate_claude_md(tmp_path)
+        assert "embody its persona" not in content
 
 
 class TestRefreshClaudeMd:
     def test_regenerates_claude_md(self, tmp_path: Path):
-        (tmp_path / "SOUL.md").write_text("soul")
+        (tmp_path / "SOUL.md").write_text("soul content")
         (tmp_path / "CLAUDE.md").write_text("old content")
 
         refresh_claude_md(tmp_path)
 
         content = (tmp_path / "CLAUDE.md").read_text()
-        assert "@import SOUL.md" in content
+        assert "soul content" in content
         assert "old content" not in content
 
     def test_reflects_file_additions(self, tmp_path: Path):
         (tmp_path / "SOUL.md").write_text("soul")
         refresh_claude_md(tmp_path)
 
-        assert "@import IDENTITY.md" not in (tmp_path / "CLAUDE.md").read_text()
+        assert "## IDENTITY.md" not in (tmp_path / "CLAUDE.md").read_text()
 
         (tmp_path / "IDENTITY.md").write_text("identity")
         refresh_claude_md(tmp_path)
 
-        assert "@import IDENTITY.md" in (tmp_path / "CLAUDE.md").read_text()
+        assert "## IDENTITY.md" in (tmp_path / "CLAUDE.md").read_text()
+        assert "identity" in (tmp_path / "CLAUDE.md").read_text()
+
+    def test_reflects_content_changes(self, tmp_path: Path):
+        (tmp_path / "SOUL.md").write_text("version 1")
+        refresh_claude_md(tmp_path)
+        assert "version 1" in (tmp_path / "CLAUDE.md").read_text()
+
+        (tmp_path / "SOUL.md").write_text("version 2")
+        refresh_claude_md(tmp_path)
+        assert "version 2" in (tmp_path / "CLAUDE.md").read_text()
+        assert "version 1" not in (tmp_path / "CLAUDE.md").read_text()
 
 
 class TestIsWorkspaceBootstrapped:
